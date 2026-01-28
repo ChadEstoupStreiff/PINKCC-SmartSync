@@ -127,17 +127,17 @@ def sync_folders(
         log_file.write(f"  folderB: {folderB}\n")
         log_file.write(f"  sync_most_recent: {sync_most_recent}\n")
         log_file.write(f"  ignore_files: {ignore_files}\n")
-        log_file.write(f"  ignore_extensions: {ignore_extensions}\n\n")
+        log_file.write(f"  ignore_extensions: {ignore_extensions}\n")
+        log_file.write(f"  ignore_hidden: {ignore_hidden}\n\n")
         log_file.write(
-            f"Synced {len(folderA_files) + len(folderB_files)} files ({len(synced_A_to_B) + len(synced_B_to_A)} copied) between {folderA} and {folderB} in {full_time} seconds.\n"
+            f"Synced {len(folderA_files) + len(folderB_files)} files ({len(synced_A_to_B) + len(synced_B_to_A)} copied) between {folderA} and {folderB} in {full_time} seconds.\n\n"
         )
         for file, status in synced_A_to_B:
             log_file.write(
                 f"Because of '{status}': {os.path.join(folderA, file)} ==> {os.path.join(folderB, file)}\n"
             )
-    with open(os.path.join(folderA, ".sync_logs", log_filename), "r") as log_file:
-        logging.info(f"Sync Logs at {log_filename}:")
-        logging.info(log_file.read())
+    # with open(os.path.join(folderA, ".sync_logs", log_filename), "r") as log_file:
+    #     logging.info(log_file.read())
 
     shutil.copy2(
         os.path.join(folderA, ".sync_logs", log_filename),
