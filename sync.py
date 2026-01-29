@@ -25,22 +25,24 @@ def walk_folder(folder, ignore_files=None, ignore_extensions=None, ignore_hidden
     ignore_extensions = ignore_extensions or []
 
     for root, dirs, files in os.walk(folder):
-        
         for d in dirs[::-1]:
             rel_dir_path = os.path.relpath(os.path.join(root, d), folder)
-            
+
             if ignore_hidden and d.startswith("."):
                 dirs.remove(d)
                 continue
-                
-            if any(rel_dir_path == ign or rel_dir_path.startswith(os.path.join(ign, "")) for ign in ignore_files):
+
+            if any(
+                rel_dir_path == ign or rel_dir_path.startswith(os.path.join(ign, ""))
+                for ign in ignore_files
+            ):
                 dirs.remove(d)
                 continue
 
         for file in files:
             if ignore_hidden and file.startswith("."):
                 continue
-                
+
             relative_path = os.path.relpath(os.path.join(root, file), folder)
 
             if any(relative_path == ign for ign in ignore_files):
@@ -76,44 +78,95 @@ def sync_folders(
     Returns:
         list: List of synced file paths.
     """
+
+    def loop_folder(rootA, rootB):
+        """
+        Loops through folderA and create folder in rootB if not exists.
+        Args:
+            rootA (str): Source folder path.
+            rootB (str): Target folder path.
+        Returns:
+            None
+        """
+        for root, dirs, _ in os.walk(rootA):
+            for d in dirs:
+                rel_dir_path = os.path.relpath(os.path.join(root, d), rootA)
+                target_dir_path = os.path.join(rootB, rel_dir_path)
+                if not os.path.exists(target_dir_path):
+                    os.makedirs(target_dir_path, exist_ok=True)
+
+    logging.info(f"Copying arborescence structure between {folderA} and {folderB}...")
+    loop_folder(folderA, folderB)
+    loop_folder(folderB, folderA)
+    logging.info("Walking through folders to get file lists...")
     folderA_files = walk_folder(folderA, ignore_files, ignore_extensions, ignore_hidden)
     folderB_files = walk_folder(folderB, ignore_files, ignore_extensions, ignore_hidden)
 
-    def loop_files(files, rootA, rootB):
+    def get_total_size(files, root):
+        """
+        Calculates the total size of a list of files in bytes.
+        Args:
+            files (list): List of file paths.
+            root (str): Root folder path.
+        Returns:
+            int: Total size in bytes.
+        """
+        total = 0
+        for f in tqdm(files, desc="Calculating total size", leave=False, unit="files"):
+            total += os.path.getsize(os.path.join(root, f))
+        return total
+
+    def loop_files(files, rootA, rootB, total_size=None):
         """
         Loops through files and syncs them from rootA to rootB.
         Args:
             files (list): List of file paths to sync.
             rootA (str): Source folder path.
             rootB (str): Target folder path.
+            total_size (int): Total size of files to sync in bytes.
         Returns:
             list: List of synced file paths. (file, status).
         """
         as_been_synced = []
-        for file in tqdm(
-            files,
-            desc=f"Syncing from {rootA} to {rootB}, total={len(files)}",
-            unit="files",
-        ):
-            file_path = os.path.join(rootA, file)
-            target_path = os.path.join(rootB, file)
+        with tqdm(
+            total=total_size,
+            desc=f"Syncing to {rootB}",
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as pbar:
+            for file in files:
+                file_path = os.path.join(rootA, file)
+                target_path = os.path.join(rootB, file)
 
-            if not os.path.exists(target_path):
-                os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                shutil.copy2(file_path, target_path)
-                as_been_synced.append((file, "new"))
-            elif sync_most_recent:
-                if os.path.getmtime(file_path) > os.path.getmtime(target_path):
+                if not os.path.exists(target_path):
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
                     shutil.copy2(file_path, target_path)
-                    as_been_synced.append((file, "more recent"))
+                    as_been_synced.append((file, "new"))
+                elif sync_most_recent:
+                    if os.path.getmtime(file_path) > os.path.getmtime(target_path):
+                        shutil.copy2(file_path, target_path)
+                        as_been_synced.append((file, "more recent"))
+                pbar.update(os.path.getsize(file_path))
         return as_been_synced
 
+    logging.info("Starting sync process...")
     start = time.time()
-    synced_A_to_B = loop_files(folderA_files, folderA, folderB)  # Sync from A to B
-    synced_B_to_A = loop_files(folderB_files, folderB, folderA)  # Sync from B to A
+    synced_A_to_B = loop_files(
+        folderA_files,
+        folderA,
+        folderB,
+        total_size=get_total_size(folderA_files, folderA),
+    )
+    synced_B_to_A = loop_files(
+        folderB_files,
+        folderB,
+        folderA,
+        total_size=get_total_size(folderB_files, folderB),
+    )
 
     full_time = time.time() - start
-    logging.info(f"Sync completed in {time.time() - start} :) Saving logs...")
+    logging.info(f"Sync completed in {full_time} :) Saving logs...")
 
     log_filename = datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + "_sync.log"
     if not os.path.exists(os.path.join(folderA, ".sync_logs")):
@@ -153,7 +206,9 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="SmartSync - Folder Synchronization Tool"
+    )
 
     parser.add_argument("A", type=str, help="Path to the first folder.")
     parser.add_argument("B", type=str, help="Path to the second folder.")
