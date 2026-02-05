@@ -189,6 +189,10 @@ def sync_folders(
             log_file.write(
                 f"Because of '{status}': {os.path.join(folderA, file)} ==> {os.path.join(folderB, file)}\n"
             )
+        for file, status in synced_B_to_A:
+            log_file.write(
+                f"Because of '{status}': {os.path.join(folderB, file)} ==> {os.path.join(folderA, file)}\n"
+            )
     # with open(os.path.join(folderA, ".sync_logs", log_filename), "r") as log_file:
     #     logging.info(log_file.read())
 
